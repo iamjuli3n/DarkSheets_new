@@ -1,59 +1,71 @@
-# DarkSheets
+# DarkSheets - Dark Web Research Tool
 
-A secure Dark Web research tool with enhanced safety features and a user-friendly graphical interface.
+A Python-based tool for security research on the Dark Web, featuring a user-friendly graphical interface.
 
-## Features
+## Prerequisites
 
-- Modern dark-themed GUI interface
-- Secure connection through Tor network
-- Multiple dark web search engines support (Ahmia, Torch, Haystak)
-- Search history and bookmarking
-- Real-time connection status monitoring
-- Safe browsing with Tor Browser integration
+1. **Python 3.8 or higher**
+   - Download from [python.org](https://www.python.org/downloads/)
+   - Make sure to check "Add Python to PATH" during installation
 
-## Installation
+2. **Tor Browser**
+   - Download from [torproject.org](https://www.torproject.org/download/)
+   - Install and run before using DarkSheets
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/DarkSheets.git
-cd DarkSheets
-```
+## Installation & Running
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+### Easy Method (Recommended)
+1. Download DarkSheets
+2. Start Tor Browser
+3. Double-click `start_darksheets.bat`
 
-3. Install Tor:
-- Windows: Download and install [Tor Browser](https://www.torproject.org/download/)
-- Linux: `sudo apt install tor`
+### Manual Method
+1. Open a terminal in the DarkSheets directory
+2. Install requirements:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Start Tor Browser
+4. Run the application:
+   ```bash
+   python run_darksheets.py
+   ```
 
 ## Usage
 
-Run the application:
-```bash
-python src/darkweb_gui.py
-```
+1. Make sure Tor Browser is running
+2. Launch DarkSheets using one of the methods above
+3. The application will automatically connect through Tor
+4. Enter your search query and select search engines
+5. Click "Search" to begin
+6. Results will appear in the main window
+7. Click links to open them in Tor Browser
+8. Right-click links to copy them
 
-## Safety Features
+## Features
 
-- All connections are routed through Tor
-- Real-time connection status monitoring
-- Automatic disconnection on exit
-- Secure browsing with Tor Browser integration
+- Modern, eye-friendly interface
+- Real-time connection monitoring
+- Multiple dark web search engines
+- Secure Tor integration
+- Search history tracking
+- System log with detailed information
 
-## Contributing
+## Troubleshooting
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. **"Python is not installed" error**
+   - Install Python from [python.org](https://www.python.org/downloads/)
+   - Make sure to check "Add Python to PATH" during installation
 
-## License
+2. **Connection errors**
+   - Make sure Tor Browser is running
+   - Click "Check Connection" in DarkSheets
+   - Check the system log for detailed error information
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+3. **Missing dependencies**
+   - Run `pip install -r requirements.txt`
+   - If pip is not found, reinstall Python with PATH option checked
 
-## Disclaimer
+## Support
 
-This tool is for security research purposes only. Always follow applicable laws and regulations when conducting research.
+For issues and feature requests, please create an issue in the GitHub repository.

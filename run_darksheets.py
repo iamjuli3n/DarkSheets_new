@@ -9,10 +9,16 @@ import sys
 
 # Add src directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+src_dir = os.path.join(current_dir, "src")
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
-from src.darkweb_gui import main
+from darkweb_gui import DarkWebGUI
 
 if __name__ == "__main__":
-    main()
+    try:
+        gui = DarkWebGUI()
+        gui.run()
+    except Exception as e:
+        print(f"Error starting DarkSheets: {str(e)}")
+        input("Press Enter to exit...")

@@ -4,6 +4,7 @@ beautifulsoup4>=4.12.2
 PySocks>=1.7.1
 psutil>=5.9.6
 rich>=13.7.0
+stem>=1.8.2
 
 # GUI dependencies
 tk>=0.1.0  # Usually comes with Python installation

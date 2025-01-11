@@ -1,6 +1,3 @@
-"""
-DarkSheets GUI Interface with Dark Mode Styling
-"""
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
@@ -9,6 +6,7 @@ import sys
 import time
 import socks
 import socket
+from datetime import datetime
 
 # Add parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,275 +16,366 @@ if parent_dir not in sys.path:
 
 from darksheets import DarkSheets
 
-class SearchThread(threading.Thread):
-    """Thread for performing dark web searches"""
-    def __init__(self, darksheets_instance, query, callback):
-        super().__init__()
-        self.darksheets = darksheets_instance
-        self.query = query
-        self.callback = callback
-        
-    def run(self):
-        """Run the thread"""
-        try:
-            def progress_callback(msg):
-                self.callback("log", msg)
-                
-            self.darksheets.console.print = progress_callback
-            results = self.darksheets.search_dark_web(self.query)
-            self.callback("results", results)
-        except Exception as e:
-            self.callback("error", str(e))
+# Dark mode colors
+COLORS = {
+    'bg_dark': '#1a1a1a',
+    'bg_darker': '#141414',
+    'bg_lighter': '#2a2a2a',
+    'text': '#e0e0e0',
+    'text_dim': '#888888',
+    'accent': '#4a9eff',
+}
 
-class TorThread(threading.Thread):
-    """Thread for Tor operations"""
-    def __init__(self, darksheets_instance, operation, callback, connect=False):
-        super().__init__()
-        self.darksheets = darksheets_instance
-        self.operation = operation
-        self.callback = callback
-        self.connect = connect
+class LoginWindow:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("DarkSheets Login")
+        self.root.configure(bg=COLORS['bg_dark'])
         
-    def run(self):
-        """Run the thread"""
+        # Center window
+        window_width = 400
+        window_height = 300
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        # Title
+        title = tk.Label(self.root,
+                        text="🌐 DarkSheets",
+                        font=('Segoe UI', 24, 'bold'),
+                        fg=COLORS['accent'],
+                        bg=COLORS['bg_dark'])
+        title.pack(pady=20)
+        
+        # Login frame
+        frame = tk.Frame(self.root, bg=COLORS['bg_dark'])
+        frame.pack(pady=20)
+        
+        # Username
+        tk.Label(frame,
+                text="Username:",
+                fg=COLORS['text'],
+                bg=COLORS['bg_dark'],
+                font=('Segoe UI', 12)).grid(row=0, column=0, pady=5)
+        self.username = ttk.Entry(frame, width=30)
+        self.username.grid(row=0, column=1, pady=5)
+        
+        # Password
+        tk.Label(frame,
+                text="Password:",
+                fg=COLORS['text'],
+                bg=COLORS['bg_dark'],
+                font=('Segoe UI', 12)).grid(row=1, column=0, pady=5)
+        self.password = ttk.Entry(frame, width=30, show="●")
+        self.password.grid(row=1, column=1, pady=5)
+        
+        # Login button
+        login_btn = ttk.Button(self.root,
+                             text="Login",
+                             command=self.login)
+        login_btn.pack(pady=20)
+        
+        # Status message
+        self.status_label = tk.Label(self.root,
+                                   text="Connecting to Tor...",
+                                   fg=COLORS['text_dim'],
+                                   bg=COLORS['bg_dark'])
+        self.status_label.pack()
+        
+        # Bind Enter key
+        self.username.bind('<Return>', lambda _: self.password.focus())
+        self.password.bind('<Return>', lambda _: self.login())
+        
+        # Start Tor connection
+        self.darksheets = DarkSheets()
+        threading.Thread(target=self.connect_tor, daemon=True).start()
+        
+        # Focus username
+        self.username.focus()
+        
+    def connect_tor(self):
+        """Connect to Tor network"""
         try:
-            if self.operation == 'connect' or self.connect:
-                # Configure SOCKS proxy
-                socks.set_default_proxy(socks.SOCKS5, "localhost", 9050)
-                socket.socket = socks.socksocket
-                
-                # Connect to Tor
-                if self.darksheets.connect_tor():
-                    self.callback("log", "Connected to Tor network")
-                else:
-                    self.callback("log", "Failed to connect to Tor")
-            elif self.operation == 'disconnect':
-                if self.darksheets.disconnect_tor():
-                    self.callback("log", "Disconnected from Tor network")
-                else:
-                    self.callback("log", "Failed to disconnect from Tor")
+            # Configure SOCKS proxy
+            socks.set_default_proxy(socks.SOCKS5, "localhost", 9050)
+            socket.socket = socks.socksocket
+            
+            if self.darksheets.connect_tor():
+                self.status_label.config(text="Connected to Tor")
+            else:
+                self.status_label.config(text="Failed to connect to Tor")
         except Exception as e:
-            self.callback("log", f"Tor operation error: {str(e)}")
+            self.status_label.config(text=f"Connection error: {str(e)}")
+    
+    def login(self):
+        """Handle login"""
+        username = self.username.get()
+        password = self.password.get()
+        
+        if username == "admin" and password == "admin":
+            self.root.destroy()
+            DarkWebGUI(self.darksheets)
+        elif username and password:
+            messagebox.showerror("Error", "Invalid credentials")
+        else:
+            messagebox.showerror("Error", "Please enter both username and password")
 
 class DarkWebGUI:
-    def __init__(self):
-        self.darksheets = DarkSheets()
+    def __init__(self, darksheets):
+        self.darksheets = darksheets
         self.root = tk.Tk()
-        self.status_var = tk.StringVar()
+        self.root.title('DarkSheets - Dark Web Research Tool')
+        self.root.geometry('1200x800')
+        self.root.configure(bg=COLORS['bg_dark'])
+        
         self.search_var = tk.StringVar()
         self.ahmia_var = tk.BooleanVar(value=True)
         self.torch_var = tk.BooleanVar(value=True)
         self.haystak_var = tk.BooleanVar(value=True)
-        self.tag_to_url = {}
-        self.init_ui()
-        # Start Tor connection immediately
-        TorThread(self.darksheets, None, self.callback_handler, connect=True).start()
-
-    def init_ui(self):
-        """Initialize the user interface"""
-        self.root.title('DarkSheets - Dark Web Research Tool')
-        self.root.geometry('1200x800')
         
-        # Configure modern dark theme
-        self.root.configure(bg='#1a1a1a')  # Darker background
+        # Configure modern styles
+        self.setup_styles()
+        self.init_ui()
+        
+    def setup_styles(self):
+        """Configure modern dark theme styles"""
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Configure modern styles
-        style.configure('TFrame', background='#1a1a1a')
-        style.configure('TLabel', background='#1a1a1a', foreground='#e0e0e0', font=('Segoe UI', 10))
-        style.configure('TButton', 
-                       background='#333333', 
-                       foreground='#e0e0e0',
-                       padding=[15, 8],
-                       font=('Segoe UI', 10))
-        style.map('TButton',
-                 background=[('active', '#404040'), ('pressed', '#505050')],
-                 foreground=[('active', '#ffffff')])
+        # Configure frame styles
+        style.configure('Main.TFrame', background=COLORS['bg_dark'])
+        style.configure('Card.TFrame', 
+                       background=COLORS['bg_lighter'],
+                       relief='solid',
+                       borderwidth=1)
         
-        style.configure('Search.TButton',  # Special style for search button
-                       background='#2962ff',
-                       foreground='white',
+        # Configure label styles
+        style.configure('Title.TLabel',
+                       background=COLORS['bg_dark'],
+                       foreground=COLORS['accent'],
+                       font=('Segoe UI', 24, 'bold'))
+        style.configure('Subtitle.TLabel',
+                       background=COLORS['bg_dark'],
+                       foreground=COLORS['text_dim'],
+                       font=('Segoe UI', 12))
+        style.configure('Info.TLabel',
+                       background=COLORS['bg_dark'],
+                       foreground=COLORS['text'],
+                       font=('Segoe UI', 10))
+        
+        # Configure button styles
+        style.configure('Search.TButton',
+                       background=COLORS['accent'],
+                       foreground=COLORS['text'],
                        padding=[20, 10],
                        font=('Segoe UI', 11, 'bold'))
         style.map('Search.TButton',
-                 background=[('active', '#1e88e5'), ('pressed', '#1976d2')])
-                 
-        style.configure('TCheckbutton', 
-                       background='#1a1a1a',
-                       foreground='#e0e0e0',
-                       font=('Segoe UI', 10))
+                 background=[('active', '#3a8eff'),
+                           ('pressed', '#2a7eff')])
+        
+        # Configure entry style
+        style.configure('Search.TEntry',
+                       fieldbackground=COLORS['bg_darker'],
+                       foreground=COLORS['text'],
+                       insertcolor=COLORS['text'],
+                       padding=[10, 8])
         
         # Configure notebook style
-        style.configure('TNotebook', 
-                       background='#1a1a1a',
+        style.configure('App.TNotebook',
+                       background=COLORS['bg_dark'],
                        tabmargins=[2, 5, 2, 0])
-        style.configure('TNotebook.Tab',
-                       background='#333333',
-                       foreground='#e0e0e0',
+        style.configure('App.TNotebook.Tab',
+                       background=COLORS['bg_darker'],
+                       foreground=COLORS['text'],
                        padding=[15, 8],
                        font=('Segoe UI', 10))
-        style.map('TNotebook.Tab',
-                 background=[('selected', '#404040')],
-                 foreground=[('selected', '#ffffff')])
+        style.map('App.TNotebook.Tab',
+                 background=[('selected', COLORS['bg_lighter'])],
+                 foreground=[('selected', COLORS['text'])])
         
+    def init_ui(self):
+        """Initialize the user interface"""
         # Main frame with padding
-        main_frame = ttk.Frame(self.root)
+        main_frame = ttk.Frame(self.root, style='Main.TFrame')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
         
-        # Header with modern design
-        header_frame = ttk.Frame(main_frame)
+        # Header section
+        header_frame = ttk.Frame(main_frame, style='Main.TFrame')
         header_frame.pack(fill=tk.X, pady=(0, 15))
         
-        # Title with icon
-        title_text = "🌐 DarkSheets"
-        title_label = ttk.Label(header_frame, 
-                              text=title_text,
-                              font=('Segoe UI', 24, 'bold'),
-                              foreground='#4a9eff')
-        title_label.pack(side=tk.LEFT)
+        # Title and subtitle
+        title_frame = ttk.Frame(header_frame, style='Main.TFrame')
+        title_frame.pack(side=tk.LEFT)
         
-        # Subtitle
-        subtitle_label = ttk.Label(header_frame,
-                                text="Dark Web Research Tool",
-                                font=('Segoe UI', 12),
-                                foreground='#888888')
-        subtitle_label.pack(side=tk.LEFT, padx=(10, 0), pady=(8, 0))
+        ttk.Label(title_frame,
+                 text="🌐 DarkSheets",
+                 style='Title.TLabel').pack(side=tk.LEFT)
         
-        # Tor status and setup in header
-        tor_frame = ttk.Frame(header_frame)
-        tor_frame.pack(side=tk.RIGHT, pady=(8, 0))
+        ttk.Label(title_frame,
+                 text="Dark Web Research Tool",
+                 style='Subtitle.TLabel').pack(side=tk.LEFT, padx=(10, 0), pady=(8, 0))
         
-        self.setup_tor_button = ttk.Button(tor_frame,
-                                         text="⚡ Configure SOCKS",
-                                         style='TButton',
-                                         command=self.setup_tor_proxy)
-        self.setup_tor_button.pack(side=tk.LEFT, padx=5)
+        # Status section
+        status_frame = ttk.Frame(header_frame, style='Card.TFrame')
+        status_frame.pack(side=tk.RIGHT, pady=(8, 0), padx=10)
         
-        self.tor_status = ttk.Label(tor_frame, 
-                                  text="Disconnected",
-                                  font=('Segoe UI', 10),
-                                  foreground='#ff4444')
-        self.tor_status.pack(side=tk.LEFT)
+        self.status_label = ttk.Label(status_frame,
+                                    text="⚡ Connected via Tor",
+                                    style='Info.TLabel')
+        self.status_label.pack(padx=10, pady=5)
         
-        # Search frame with modern layout
-        search_frame = ttk.Frame(main_frame)
+        # Search section
+        search_frame = ttk.Frame(main_frame, style='Main.TFrame')
         search_frame.pack(fill=tk.X, pady=(0, 15))
         
-        # Search entry with modern style
-        search_entry = ttk.Entry(search_frame, 
-                               textvariable=self.search_var,
-                               font=('Segoe UI', 12))
-        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        # Search entry with icon
+        entry_frame = ttk.Frame(search_frame, style='Main.TFrame')
+        entry_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
         
-        # Search button with modern style
+        ttk.Label(entry_frame,
+                 text="🔍",
+                 style='Info.TLabel').pack(side=tk.LEFT, padx=(5, 0))
+        
+        self.search_entry = ttk.Entry(entry_frame,
+                                    textvariable=self.search_var,
+                                    style='Search.TEntry',
+                                    font=('Segoe UI', 12))
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # Search button
         search_button = ttk.Button(search_frame,
-                                text="🔍 Search",
-                                style='Search.TButton',
-                                command=self.perform_search)
+                                 text="Search",
+                                 style='Search.TButton',
+                                 command=self.perform_search)
         search_button.pack(side=tk.RIGHT)
         
-        # Engine selection with modern checkboxes
-        engines_frame = ttk.Frame(main_frame)
+        # Engine selection
+        engines_frame = ttk.Frame(main_frame, style='Card.TFrame')
         engines_frame.pack(fill=tk.X, pady=(0, 15))
         
-        engines_label = ttk.Label(engines_frame,
-                               text="Search Engines:",
-                               font=('Segoe UI', 10, 'bold'))
-        engines_label.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(engines_frame,
+                 text="Search Engines",
+                 style='Info.TLabel').pack(side=tk.LEFT, padx=10, pady=5)
         
-        # Engine checkboxes
-        ahmia_cb = ttk.Checkbutton(engines_frame,
-                                 text="Ahmia",
-                                 variable=self.ahmia_var)
-        ahmia_cb.pack(side=tk.LEFT, padx=5)
+        for engine, var in [("🔍 Ahmia", self.ahmia_var),
+                          ("🔦 Torch", self.torch_var),
+                          ("🌾 Haystak", self.haystak_var)]:
+            cb = ttk.Checkbutton(engines_frame,
+                               text=engine,
+                               variable=var)
+            cb.pack(side=tk.LEFT, padx=10, pady=5)
         
-        torch_cb = ttk.Checkbutton(engines_frame,
-                                text="Torch",
-                                variable=self.torch_var)
-        torch_cb.pack(side=tk.LEFT, padx=5)
-        
-        haystak_cb = ttk.Checkbutton(engines_frame,
-                                  text="Haystak",
-                                  variable=self.haystak_var)
-        haystak_cb.pack(side=tk.LEFT, padx=5)
-        
-        # Results notebook
-        notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill=tk.BOTH, expand=True)
+        # Notebook for results, history, and log
+        self.notebook = ttk.Notebook(main_frame, style='App.TNotebook')
+        self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # Results tab
-        results_frame = ttk.Frame(notebook)
-        notebook.add(results_frame, text="Results")
+        results_frame = ttk.Frame(self.notebook, style='Main.TFrame')
+        self.notebook.add(results_frame, text="📊 Results")
         
         self.results_text = tk.Text(results_frame,
-                                  bg='#141414',
-                                  fg='#e0e0e0',
-                                  font=('Consolas', 10))
+                                  bg=COLORS['bg_darker'],
+                                  fg=COLORS['text'],
+                                  font=('Consolas', 10),
+                                  wrap=tk.WORD,
+                                  padx=10,
+                                  pady=10)
         self.results_text.pack(fill=tk.BOTH, expand=True)
         
+        # History tab
+        history_frame = ttk.Frame(self.notebook, style='Main.TFrame')
+        self.notebook.add(history_frame, text="📜 History")
+        
+        self.history_text = tk.Text(history_frame,
+                                  bg=COLORS['bg_darker'],
+                                  fg=COLORS['text'],
+                                  font=('Consolas', 10),
+                                  wrap=tk.WORD,
+                                  padx=10,
+                                  pady=10)
+        self.history_text.pack(fill=tk.BOTH, expand=True)
+        
         # Log tab
-        log_frame = ttk.Frame(notebook)
-        notebook.add(log_frame, text="Log")
+        log_frame = ttk.Frame(self.notebook, style='Main.TFrame')
+        self.notebook.add(log_frame, text="📝 Log")
         
         self.log_text = tk.Text(log_frame,
-                               bg='#141414',
-                               fg='#e0e0e0',
-                               font=('Consolas', 10))
+                              bg=COLORS['bg_darker'],
+                              fg=COLORS['text'],
+                              font=('Consolas', 10),
+                              wrap=tk.WORD,
+                              padx=10,
+                              pady=10)
         self.log_text.pack(fill=tk.BOTH, expand=True)
-
-    def setup_tor_proxy(self):
-        """Configure SOCKS proxy settings"""
-        pass  # Implement SOCKS configuration dialog
-
+        
+        # Bind Enter key to search
+        self.search_entry.bind('<Return>', lambda e: self.perform_search())
+        
+        # Add initial log message
+        self.log_message("DarkSheets started successfully")
+        
     def perform_search(self):
         """Execute search query"""
-        query = self.search_var.get()
+        query = self.search_var.get().strip()
         if not query:
+            messagebox.showwarning("Warning", "Please enter a search query")
             return
-            
+        
+        # Log the search
         self.log_message(f"Searching for: {query}")
+        self.history_text.insert(1.0, f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {query}\n")
+        
+        # Clear results
         self.results_text.delete(1.0, tk.END)
         self.results_text.insert(tk.END, "Searching...\n")
         
-        # Start search in background thread
-        SearchThread(self.darksheets, query, self.callback_handler).start()
-
-    def callback_handler(self, msg_type, msg):
-        """Handle callbacks from threads"""
-        if msg_type == "log":
-            self.log_message(msg)
-        elif msg_type == "results":
-            self.update_results(msg)
-        elif msg_type == "error":
-            self.log_message(f"Error: {msg}")
-            messagebox.showerror("Error", str(msg))
-
+        def search():
+            try:
+                results = self.darksheets.search_dark_web(query)
+                self.root.after(0, lambda: self.update_results(results))
+            except Exception as e:
+                error_msg = str(e)
+                self.root.after(0, lambda: self.handle_error(error_msg))
+        
+        threading.Thread(target=search, daemon=True).start()
+    
     def update_results(self, results):
         """Update results in text widget"""
         self.results_text.delete(1.0, tk.END)
-        if not results:
-            self.results_text.insert(tk.END, "No results found\n")
-            return
-            
-        for result in results:
-            self.results_text.insert(tk.END, f"{result}\n")
-            
-        self.log_message("Search completed successfully")
-
+        if results:
+            for i, result in enumerate(results, 1):
+                self.results_text.insert(tk.END, f"Result #{i}\n")
+                self.results_text.insert(tk.END, f"{'='*50}\n")
+                self.results_text.insert(tk.END, f"Title: {result['title']}\n")
+                self.results_text.insert(tk.END, f"URL: {result['url']}\n")
+                self.results_text.insert(tk.END, f"Description: {result['description']}\n\n")
+            self.log_message(f"Found {len(results)} results")
+        else:
+            self.results_text.insert(tk.END, "No results found.")
+            self.log_message("Search completed with no results")
+    
+    def handle_error(self, error_msg):
+        """Handle search errors"""
+        self.results_text.delete(1.0, tk.END)
+        self.results_text.insert(tk.END, f"Error: {error_msg}")
+        self.log_message(f"Error during search: {error_msg}")
+        messagebox.showerror("Search Error", error_msg)
+    
     def log_message(self, message):
         """Add message to log"""
-        timestamp = time.strftime("%H:%M:%S")
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.log_text.see(tk.END)
-
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.log_text.insert(1.0, f"[{timestamp}] {message}\n")
+        self.log_text.see("1.0")
+    
     def run(self):
-        """Start the GUI application"""
+        """Start the application"""
         self.root.mainloop()
 
 def main():
-    gui = DarkWebGUI()
-    gui.run()
+    login = LoginWindow()
+    login.root.mainloop()
 
 if __name__ == "__main__":
     main()

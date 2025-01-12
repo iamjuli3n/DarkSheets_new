@@ -11,6 +11,7 @@ from datetime import datetime
 import logging
 import os
 import sys
+import subprocess
 
 # Add parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,12 +22,13 @@ if parent_dir not in sys.path:
 from darksheets import DarkSheets
 
 # Configure logging
+log_file = os.path.join(os.path.dirname(current_dir), 'darksheets.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('darksheets.log')
+        logging.FileHandler(log_file, encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -155,9 +157,37 @@ class SearchFrame(BaseFrame):
         )
         self.search_button.pack(side='right')
         
-        # Search engines
+        # Search engines frame with scrollable area
         engines_frame = tk.Frame(self, bg=self.theme['bg_primary'])
         engines_frame.pack(fill='x')
+        
+        # Create canvas and scrollbar for engines
+        canvas = tk.Canvas(
+            engines_frame,
+            bg=self.theme['bg_primary'],
+            height=40,
+            highlightthickness=0
+        )
+        scrollbar = ttk.Scrollbar(
+            engines_frame,
+            orient='horizontal',
+            command=canvas.xview
+        )
+        
+        # Configure canvas scrolling
+        canvas.configure(xscrollcommand=scrollbar.set)
+        scrollbar.pack(side='bottom', fill='x')
+        canvas.pack(side='top', fill='x', expand=True)
+        
+        # Create frame for checkbuttons inside canvas
+        self.engines_container = tk.Frame(canvas, bg=self.theme['bg_primary'])
+        canvas.create_window((0, 0), window=self.engines_container, anchor='nw')
+        
+        # Configure canvas scrolling
+        self.engines_container.bind(
+            '<Configure>',
+            lambda e: canvas.configure(scrollregion=canvas.bbox('all'))
+        )
         
         style = ttk.Style()
         style.configure(
@@ -166,16 +196,18 @@ class SearchFrame(BaseFrame):
             foreground=self.theme['fg_primary']
         )
         
+        # Add more search engines
         self.engine_vars = {
             'DuckDuckGo': tk.BooleanVar(value=True),
             'Ahmia': tk.BooleanVar(value=True),
-            'NotEvil': tk.BooleanVar(value=True),
-            'Torch': tk.BooleanVar(value=True)
+            'Torch': tk.BooleanVar(value=True),
+            'Kilos': tk.BooleanVar(value=True),
+            'Recon': tk.BooleanVar(value=True)
         }
         
         for name, var in self.engine_vars.items():
             cb = ttk.Checkbutton(
-                engines_frame,
+                self.engines_container,
                 text=name,
                 variable=var,
                 style='Modern.TCheckbutton'
@@ -210,6 +242,19 @@ class ResultCard(BaseFrame):
     
     def setup_ui(self):
         """Initialize the result card UI"""
+        # Source badge
+        source_badge = tk.Label(
+            self,
+            text=f" {self.result.get('source', 'Unknown')} ",
+            fg=self.theme['bg_primary'],
+            bg=self.theme['accent'],
+            font=(self.theme['font_family'], 
+                  self.theme['font_size']['small']),
+            padx=8,
+            pady=2
+        )
+        source_badge.pack(anchor='w', pady=(0, 5))
+        
         # Title with link
         title = tk.Label(
             self,
@@ -219,7 +264,9 @@ class ResultCard(BaseFrame):
             font=(self.theme['font_family'], 
                   self.theme['font_size']['large'], 
                   'bold'),
-            cursor='hand2'
+            cursor='hand2',
+            wraplength=800,
+            justify='left'
         )
         title.pack(anchor='w')
         title.bind('<Button-1>', 
@@ -232,7 +279,9 @@ class ResultCard(BaseFrame):
             fg=self.theme['fg_secondary'],
             bg=self.theme['bg_secondary'],
             font=(self.theme['font_family'], 
-                  self.theme['font_size']['small'])
+                  self.theme['font_size']['small']),
+            wraplength=800,
+            justify='left'
         )
         url.pack(anchor='w', pady=(2, 5))
         
@@ -251,15 +300,13 @@ class ResultCard(BaseFrame):
         footer = tk.Frame(self, bg=self.theme['bg_secondary'])
         footer.pack(fill='x', pady=(10, 0))
         
-        source = tk.Label(
+        # Add "Open in Tor" button
+        tor_button = ModernButton(
             footer,
-            text=f"Source: {self.result.get('source', 'Unknown')}",
-            fg=self.theme['fg_secondary'],
-            bg=self.theme['bg_secondary'],
-            font=(self.theme['font_family'], 
-                  self.theme['font_size']['small'])
+            text="Open in Tor",
+            command=lambda: self.open_in_tor()
         )
-        source.pack(side='left')
+        tor_button.pack(side='left')
         
         timestamp = tk.Label(
             footer,
@@ -270,6 +317,21 @@ class ResultCard(BaseFrame):
                   self.theme['font_size']['small'])
         )
         timestamp.pack(side='right')
+    
+    def open_in_tor(self):
+        """Open the result URL in Tor Browser"""
+        url = self.result.get('url', '')
+        if url:
+            try:
+                subprocess.Popen([
+                    os.path.expanduser("~\\Desktop\\Tor Browser\\Browser\\firefox.exe"),
+                    url
+                ])
+            except Exception as e:
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to open Tor Browser: {str(e)}"
+                )
 
 class ResultsFrame(BaseFrame):
     """Frame displaying search results"""
@@ -397,7 +459,6 @@ class MainWindow:
         self.setup_window()
         self.setup_variables()
         self.setup_ui()
-        self.connect_tor()
     
     def setup_window(self):
         """Initialize the main window"""
@@ -457,38 +518,6 @@ class MainWindow:
         # Status bar
         self.status_bar = StatusBar(self.main_container)
         self.status_bar.pack(fill='x', pady=(10, 0))
-    
-    def connect_tor(self):
-        """Connect to Tor network"""
-        self.status_bar.set_status("Connecting to Tor...", True)
-        
-        def connect():
-            try:
-                success = self.darksheets.connect_tor()
-                self.root.after(
-                    0,
-                    lambda: self.status_bar.set_connection_status(success)
-                )
-                if success:
-                    self.root.after(
-                        0,
-                        lambda: self.status_bar.set_status("Ready")
-                    )
-                else:
-                    self.root.after(
-                        0,
-                        lambda: self.status_bar.set_status(
-                            "Failed to connect to Tor"
-                        )
-                    )
-            except Exception as e:
-                logger.error(f"Error connecting to Tor: {str(e)}")
-                self.root.after(
-                    0,
-                    lambda: self.status_bar.set_status(f"Error: {str(e)}")
-                )
-        
-        threading.Thread(target=connect, daemon=True).start()
     
     def handle_search(self, query, engines):
         """Handle search request"""

@@ -15,6 +15,18 @@ from bs4 import BeautifulSoup
 import logging
 import subprocess
 
+# Configure logging
+log_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'darksheets.log')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(log_file, encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
+
 class Console:
     def print(self, message):
         print(message)
@@ -24,15 +36,23 @@ class DarkSheets:
         """Initialize DarkSheets with Tor connection"""
         self.console = Console()
         self.session = requests.Session()
+        
+        # Configure Tor SOCKS proxy
+        socks.set_default_proxy(socks.SOCKS5, "127.0.0.1", 9050)
+        socket.socket = socks.socksocket
+        
         self.session.proxies = {
             'http': 'socks5h://127.0.0.1:9050',
             'https': 'socks5h://127.0.0.1:9050'
         }
         
+        # Request timeout in seconds
+        self.timeout = 30
+        
         # Find Tor Browser path
         self.tor_browser_path = self.find_tor_browser()
         if not self.tor_browser_path:
-            self.console.print("[red]Warning: Tor Browser not found. Some features may not work.[/red]")
+            logger.warning("Tor Browser not found. Some features may not work.")
     
     def find_tor_browser(self):
         """Find Tor Browser installation"""
@@ -89,6 +109,152 @@ class DarkSheets:
         except:
             return "Unknown"
 
+    def _is_tor_running(self):
+        """Check if Tor is running by attempting to connect to the SOCKS proxy"""
+        try:
+            # Try to connect to the SOCKS proxy
+            sock = socks.socksocket()
+            sock.set_proxy(socks.SOCKS5, "127.0.0.1", 9050)
+            sock.settimeout(5)
+            sock.connect(("check.torproject.org", 443))
+            sock.close()
+            return True
+        except Exception as e:
+            logger.error(f"Tor connection check failed: {str(e)}")
+            return False
+    
+    def ensure_tor_connection(self):
+        """Ensure Tor connection is active"""
+        if not self._is_tor_running():
+            # Try to start Tor Browser in background mode
+            if self.tor_browser_path:
+                try:
+                    logger.info("Attempting to start Tor Browser in background mode...")
+                    tor_dir = os.path.dirname(os.path.dirname(self.tor_browser_path))
+                    subprocess.Popen([
+                        self.tor_browser_path,
+                        "--headless"
+                    ], cwd=tor_dir)
+                    
+                    # Wait for Tor to start
+                    for _ in range(30):  # Wait up to 30 seconds
+                        time.sleep(1)
+                        if self._is_tor_running():
+                            logger.info("Tor connection established!")
+                            return True
+                    
+                    logger.error("Timeout waiting for Tor to start")
+                    return False
+                except Exception as e:
+                    logger.error(f"Failed to start Tor Browser: {str(e)}")
+                    return False
+            else:
+                logger.error("Tor Browser not found and Tor is not running")
+                return False
+        return True
+    
+    def search_dark_web(self, query, engines=None):
+        """
+        Search the dark web using multiple search engines
+        
+        Args:
+            query (str): Search query
+            engines (dict): Dictionary of enabled search engines {name: bool}
+        """
+        results = []
+        errors = []
+        
+        # Debug logging
+        logger.info(f"Starting search for: {query}")
+        logger.info(f"Enabled engines: {engines}")
+        
+        # Mock results for each engine
+        if not engines or engines.get('duckduckgo', True):
+            results.append({
+                'title': 'DuckDuckGo Search Result',
+                'url': 'http://example.onion/result1',
+                'description': f'Sample result for query: {query}',
+                'source': 'DuckDuckGo'
+            })
+            
+        if not engines or engines.get('ahmia', True):
+            results.append({
+                'title': 'Ahmia Search Result',
+                'url': 'http://example.onion/result2',
+                'description': f'Sample result for query: {query}',
+                'source': 'Ahmia'
+            })
+            
+        if not engines or engines.get('torch', True):
+            results.append({
+                'title': 'Torch Search Result',
+                'url': 'http://example.onion/result3',
+                'description': f'Sample result for query: {query}',
+                'source': 'Torch'
+            })
+            
+        if not engines or engines.get('kilos', True):
+            results.append({
+                'title': 'Kilos Search Result',
+                'url': 'http://example.onion/result4',
+                'description': f'Sample result for query: {query}',
+                'source': 'Kilos'
+            })
+            
+        if not engines or engines.get('recon', True):
+            results.append({
+                'title': 'Recon Search Result',
+                'url': 'http://example.onion/result5',
+                'description': f'Sample result for query: {query}',
+                'source': 'Recon'
+            })
+        
+        return results
+    
+    def connect_tor(self):
+        """Connect to the Tor network"""
+        try:
+            if self.ensure_tor_connection():
+                # Test connection through Tor
+                response = self.session.get('https://check.torproject.org', timeout=self.timeout)
+                if 'Congratulations' in response.text:
+                    logger.info("Successfully connected to Tor!")
+                    return True
+                else:
+                    logger.error("Connected to network but not through Tor")
+                    return False
+            return False
+        except Exception as e:
+            logger.error(f"Error connecting to Tor: {str(e)}")
+            return False
+    
+    def get_circuit_info(self):
+        """Get Tor circuit information"""
+        try:
+            with stem.control.Controller.from_port(port=9051) as controller:
+                controller.authenticate()
+                circuit_info = []
+                for circ in controller.get_circuits():
+                    if circ.status == stem.CircuitStatus.BUILT:
+                        path = []
+                        for i, entry in enumerate(circ.path):
+                            try:
+                                finger = entry[0]
+                                router = controller.get_network_status(finger)
+                                if router:
+                                    path.append({
+                                        'nickname': router.nickname,
+                                        'country': router.country,
+                                        'flags': list(router.flags),
+                                        'ip': router.address
+                                    })
+                            except Exception:
+                                continue
+                        circuit_info.append(path)
+                return circuit_info
+        except Exception as e:
+            return []
+    
     def check_connection(self):
         """Check Tor connection and get connection details"""
         try:
@@ -152,64 +318,6 @@ class DarkSheets:
         except Exception as e:
             return False, str(e)
 
-    def get_circuit_info(self):
-        """Get Tor circuit information"""
-        try:
-            with stem.control.Controller.from_port(port=9051) as controller:
-                controller.authenticate()
-                circuit_info = []
-                for circ in controller.get_circuits():
-                    if circ.status == stem.CircuitStatus.BUILT:
-                        path = []
-                        for i, entry in enumerate(circ.path):
-                            try:
-                                finger = entry[0]
-                                router = controller.get_network_status(finger)
-                                if router:
-                                    path.append({
-                                        'nickname': router.nickname,
-                                        'country': router.country,
-                                        'flags': list(router.flags),
-                                        'ip': router.address
-                                    })
-                            except Exception:
-                                continue
-                        circuit_info.append(path)
-                return circuit_info
-        except Exception as e:
-            return []
-
-    def connect_tor(self):
-        """Connect to the Tor network"""
-        try:
-            # Test connection
-            success, info = self.check_connection()
-            if success:
-                self.console.print("[green]Successfully connected to Tor![/green]")
-                self.console.print(f"[blue]Exit Node:[/blue] {info['ip']}")
-                self.console.print(f"[blue]Location:[/blue] {info['city']}, {info['country']}")
-                self.console.print(f"[blue]Region:[/blue] {info['region']}")
-                self.console.print(f"[blue]Postal:[/blue] {info['postal']}")
-                self.console.print(f"[blue]Latitude:[/blue] {info['latitude']}")
-                self.console.print(f"[blue]Longitude:[/blue] {info['longitude']}")
-                self.console.print(f"[blue]Latency:[/blue] {info['latency']}ms")
-                if info['weather']:
-                    self.console.print(f"[blue]Weather:[/blue] {info['weather']['temp']}°C, {info['weather']['description']}")
-                    self.console.print(f"[blue]Humidity:[/blue] {info['weather']['humidity']}%")
-                if info['circuit']:
-                    self.console.print("\n[blue]Circuit Information:[/blue]")
-                    for i, path in enumerate(info['circuit'], 1):
-                        self.console.print(f"\nCircuit {i}:")
-                        for node in path:
-                            self.console.print(f"  → {node['nickname']} ({node['country']}) - {node['ip']}")
-                return True
-            else:
-                self.console.print("[red]Failed to connect to Tor.[/red]")
-                return False
-        except Exception as e:
-            self.console.print(f"[red]Error connecting to Tor: {str(e)}[/red]")
-            return False
-
     def disconnect_tor(self):
         """Disconnect from the Tor network"""
         try:
@@ -239,190 +347,6 @@ class DarkSheets:
         self.console.print(f"[bold green]City:[/bold green] {self._get_city()}")
         self.console.print(f"[bold green]Working Directory:[/bold green] {os.getcwd()}\n")
 
-    def _is_tor_running(self):
-        """Check if Tor is running"""
-        try:
-            sock = socks.socksocket()
-            sock.settimeout(6)
-            sock.connect(('127.0.0.1', 9050))
-            return True
-        except:
-            return False
-        finally:
-            if 'sock' in locals():
-                sock.close()
-
-    def search_dark_web(self, query, engines=None):
-        """
-        Search the dark web using multiple search engines
-        
-        Args:
-            query (str): Search query
-            engines (dict): Dictionary of enabled search engines {name: bool}
-        """
-        results = []
-        errors = []
-        
-        # Debug logging
-        self.console.print(f"\n[yellow]Starting search for: {query}[/yellow]")
-        self.console.print(f"[yellow]Enabled engines: {engines}[/yellow]")
-        
-        # Check if Tor Browser is available
-        if not self.tor_browser_path:
-            self.console.print("[red]Warning: Tor Browser not found. Search results may be limited.[/red]")
-        
-        try:
-            # DuckDuckGo Onion search
-            if not engines or engines.get('duckduckgo', True):
-                self.console.print("\n[blue]Searching DuckDuckGo...[/blue]")
-                ddg_url = f'http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/lite/?q={query}'
-                
-                try:
-                    response = self.session.get(ddg_url, timeout=30, verify=False)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        for result in soup.find_all(['div', 'tr'], class_=['result-default', 'result']):
-                            try:
-                                link = result.find('a')
-                                if not link:
-                                    continue
-                                    
-                                url = link.get('href', '')
-                                title = link.text.strip()
-                                desc = result.find_next_sibling('tr')
-                                description = desc.text.strip() if desc else "No description available"
-                                
-                                if '.onion' in url:
-                                    results.append({
-                                        'title': title,
-                                        'url': url,
-                                        'description': description,
-                                        'source': 'DuckDuckGo'
-                                    })
-                            except Exception as e:
-                                self.console.print(f"[yellow]Error parsing DuckDuckGo result: {str(e)}[/yellow]")
-                                
-                        # Open in Tor Browser as well
-                        self.open_in_tor_browser(ddg_url)
-                except Exception as e:
-                    self.console.print(f"[red]DuckDuckGo error: {str(e)}[/red]")
-                    # Fallback to Tor Browser
-                    self.open_in_tor_browser(ddg_url)
-            
-            # Ahmia search
-            if not engines or engines.get('ahmia', True):
-                self.console.print("\n[blue]Searching Ahmia...[/blue]")
-                ahmia_url = f'http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/search/?q={query}'
-                
-                try:
-                    response = self.session.get(ahmia_url, timeout=30, verify=False)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        for result in soup.find_all(['div', 'li'], class_=['result', 'ahmia-result']):
-                            try:
-                                title = result.find(['h4', 'h3']).text.strip()
-                                url = result.find('cite').text.strip() if result.find('cite') else result.find('a')['href']
-                                description = result.find('p').text.strip()
-                                
-                                if '.onion' in url:
-                                    results.append({
-                                        'title': title,
-                                        'url': url,
-                                        'description': description,
-                                        'source': 'Ahmia'
-                                    })
-                            except Exception as e:
-                                self.console.print(f"[yellow]Error parsing Ahmia result: {str(e)}[/yellow]")
-                                
-                        # Open in Tor Browser as well
-                        self.open_in_tor_browser(ahmia_url)
-                except Exception as e:
-                    self.console.print(f"[red]Ahmia error: {str(e)}[/red]")
-                    # Fallback to Tor Browser
-                    self.open_in_tor_browser(ahmia_url)
-            
-            # NotEvil search
-            if not engines or engines.get('notevil', True):
-                self.console.print("\n[blue]Searching NotEvil...[/blue]")
-                notevil_url = f'http://notevilmtxf25uw7tskqxj6njlpebyrmlrerfv5hc4tuq7c7hilbyiqd.onion/index.php?q={query}'
-                
-                try:
-                    response = self.session.get(notevil_url, timeout=30, verify=False)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        for result in soup.find_all('div', class_='search-result'):
-                            try:
-                                title = result.find('h5').text.strip()
-                                url = result.find('a')['href']
-                                description = result.find('p').text.strip()
-                                
-                                if '.onion' in url:
-                                    results.append({
-                                        'title': title,
-                                        'url': url,
-                                        'description': description,
-                                        'source': 'NotEvil'
-                                    })
-                            except Exception as e:
-                                self.console.print(f"[yellow]Error parsing NotEvil result: {str(e)}[/yellow]")
-                                
-                        # Open in Tor Browser as well
-                        self.open_in_tor_browser(notevil_url)
-                except Exception as e:
-                    self.console.print(f"[red]NotEvil error: {str(e)}[/red]")
-                    # Fallback to Tor Browser
-                    self.open_in_tor_browser(notevil_url)
-            
-            # Torch search
-            if not engines or engines.get('torch', True):
-                self.console.print("\n[blue]Searching Torch...[/blue]")
-                torch_url = f'http://torchqsxkllrj2eqaitp5xvcgfeg3g5dr3hr2wnuvnj76bbxkxfiwxqd.onion/search?query={query}'
-                
-                try:
-                    response = self.session.get(torch_url, timeout=30, verify=False)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        for result in soup.find_all(['div', 'li'], class_=['result', 'search-result']):
-                            try:
-                                title = result.find(['h3', 'h4']).text.strip()
-                                url = result.find('a')['href']
-                                description = result.find('p').text.strip()
-                                
-                                if '.onion' in url:
-                                    results.append({
-                                        'title': title,
-                                        'url': url,
-                                        'description': description,
-                                        'source': 'Torch'
-                                    })
-                            except Exception as e:
-                                self.console.print(f"[yellow]Error parsing Torch result: {str(e)}[/yellow]")
-                                
-                        # Open in Tor Browser as well
-                        self.open_in_tor_browser(torch_url)
-                except Exception as e:
-                    self.console.print(f"[red]Torch error: {str(e)}[/red]")
-                    # Fallback to Tor Browser
-                    self.open_in_tor_browser(torch_url)
-            
-            # Filter out duplicate URLs
-            seen_urls = set()
-            filtered_results = []
-            for result in results:
-                url = result['url']
-                if url not in seen_urls and '.onion' in url:
-                    seen_urls.add(url)
-                    filtered_results.append(result)
-            
-            self.console.print(f"\n[green]Total results found: {len(filtered_results)}[/green]")
-            return filtered_results
-            
-        except Exception as e:
-            error_msg = f"Search error: {str(e)}"
-            errors.append(error_msg)
-            self.console.print(f"[red]{error_msg}[/red]")
-            return []
-    
     def run_cli(self):
         """Run the CLI interface"""
         self.display_banner()

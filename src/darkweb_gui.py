@@ -7,6 +7,7 @@ import time
 import socks
 import socket
 from datetime import datetime
+import queue
 
 # Add parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -323,6 +324,13 @@ class DarkWebGUI:
             messagebox.showwarning("Warning", "Please enter a search query")
             return
         
+        # Get enabled search engines
+        engines = {
+            'ahmia': self.ahmia_var.get(),
+            'torch': self.torch_var.get(),
+            'haystak': self.haystak_var.get()
+        }
+        
         # Log the search
         self.log_message(f"Searching for: {query}")
         self.history_text.insert(1.0, f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {query}\n")
@@ -331,15 +339,32 @@ class DarkWebGUI:
         self.results_text.delete(1.0, tk.END)
         self.results_text.insert(tk.END, "Searching...\n")
         
+        # Create a queue for thread communication
+        result_queue = queue.Queue()
+        
         def search():
             try:
-                results = self.darksheets.search_dark_web(query)
-                self.root.after(0, lambda: self.update_results(results))
+                results = self.darksheets.search_dark_web(query, engines)
+                result_queue.put(('success', results))
             except Exception as e:
-                error_msg = str(e)
-                self.root.after(0, lambda: self.handle_error(error_msg))
+                result_queue.put(('error', str(e)))
         
+        def check_results():
+            try:
+                if not result_queue.empty():
+                    status, data = result_queue.get_nowait()
+                    if status == 'success':
+                        self.update_results(data)
+                    else:
+                        self.handle_error(data)
+                    return
+                self.root.after(100, check_results)
+            except Exception as e:
+                self.handle_error(f"Error checking results: {str(e)}")
+        
+        # Start search thread and checker
         threading.Thread(target=search, daemon=True).start()
+        self.root.after(100, check_results)
     
     def update_results(self, results):
         """Update results in text widget"""

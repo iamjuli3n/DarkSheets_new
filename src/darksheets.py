@@ -27,6 +27,11 @@ class DarkSheets:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+        # Configure SOCKS proxy for .onion URLs
+        self.session.proxies = {
+            'http': 'socks5h://127.0.0.1:9050',
+            'https': 'socks5h://127.0.0.1:9050'
+        }
         self.ext_ip = None
 
     def _get_local_ip(self):
@@ -89,10 +94,6 @@ class DarkSheets:
     def connect_tor(self):
         """Connect to the Tor network"""
         try:
-            # Configure SOCKS proxy
-            socks.set_default_proxy(socks.SOCKS5, "localhost", 9050)
-            socket.socket = socks.socksocket
-            
             # Test connection
             response = requests.get('https://check.torproject.org')
             if 'Congratulations' in response.text:
@@ -115,43 +116,100 @@ class DarkSheets:
         except:
             return False
             
-    def search_dark_web(self, query):
-        """Search the dark web using multiple search engines"""
+    def search_dark_web(self, query, engines=None):
+        """
+        Search the dark web using multiple search engines
+        
+        Args:
+            query (str): Search query
+            engines (dict): Dictionary of enabled search engines {name: bool}
+        """
         results = []
+        errors = []
         
         try:
-            # Ahmia search
-            ahmia_url = f'https://ahmia.fi/search/?q={query}'
-            response = self.session.get(ahmia_url)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for result in soup.find_all('li', class_='result'):
-                title = result.find('h4').text.strip()
-                url = result.find('a')['href']
-                description = result.find('p').text.strip()
-                results.append({
-                    'title': title,
-                    'url': url,
-                    'description': description,
-                    'source': 'Ahmia'
-                })
-                
-            # Torch search
-            torch_url = f'http://xmh57jrzrnw6insl.onion/4a1f6b371c/search.cgi?q={query}'
-            response = self.session.get(torch_url)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for result in soup.find_all('dl'):
-                title = result.find('dt').text.strip()
-                url = result.find('dd').text.strip()
-                results.append({
-                    'title': title,
-                    'url': url,
-                    'description': '',
-                    'source': 'Torch'
-                })
-                
-        except Exception as e:
-            self.console.print(f"Search error: {str(e)}")
+            # Ahmia search (clearnet)
+            if not engines or engines.get('ahmia', True):
+                try:
+                    ahmia_url = f'https://ahmia.fi/search/?q={query}'
+                    response = self.session.get(ahmia_url, timeout=30)
+                    response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    for result in soup.find_all('li', class_='result'):
+                        try:
+                            title = result.find('h4').text.strip()
+                            url = result.find('a')['href']
+                            description = result.find('p').text.strip()
+                            results.append({
+                                'title': title,
+                                'url': url,
+                                'description': description,
+                                'source': 'Ahmia'
+                            })
+                        except (AttributeError, KeyError) as e:
+                            continue  # Skip malformed results
+                except Exception as e:
+                    errors.append(f"Ahmia search error: {str(e)}")
             
+            # Torch search (onion)
+            if not engines or engines.get('torch', True):
+                try:
+                    # Updated Torch onion URL
+                    torch_url = f'http://torchqsxkllrj2eqaitp5xvcgfeg3g5dr3hr2wnuvnj76bbxkxfiwxqd.onion/search?query={query}'
+                    response = self.session.get(torch_url, timeout=60)  # Longer timeout for .onion
+                    response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    for result in soup.find_all('div', class_='result'):
+                        try:
+                            title_elem = result.find('a', class_='title')
+                            title = title_elem.text.strip()
+                            url = title_elem['href']
+                            description = result.find('div', class_='description').text.strip()
+                            results.append({
+                                'title': title,
+                                'url': url,
+                                'description': description,
+                                'source': 'Torch'
+                            })
+                        except (AttributeError, KeyError) as e:
+                            continue  # Skip malformed results
+                except Exception as e:
+                    errors.append(f"Torch search error: {str(e)}")
+            
+            # Not Evil search (onion alternative to Haystak)
+            if not engines or engines.get('haystak', True):
+                try:
+                    # Not Evil onion URL
+                    not_evil_url = f'http://notevilmtxf25uw7tskqxj6njlpebyrmlrerfv5hc4tuq7c7hilbyiqd.onion/index.php?q={query}'
+                    response = self.session.get(not_evil_url, timeout=60)  # Longer timeout for .onion
+                    response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    for result in soup.find_all('div', class_='result'):
+                        try:
+                            title_elem = result.find('h4')
+                            title = title_elem.text.strip()
+                            url = title_elem.find('a')['href']
+                            description = result.find('p', class_='description').text.strip()
+                            results.append({
+                                'title': title,
+                                'url': url,
+                                'description': description,
+                                'source': 'Not Evil'
+                            })
+                        except (AttributeError, KeyError) as e:
+                            continue  # Skip malformed results
+                except Exception as e:
+                    errors.append(f"Not Evil search error: {str(e)}")
+            
+        except Exception as e:
+            errors.append(f"General search error: {str(e)}")
+        
+        if errors:
+            self.console.print("\n".join(errors))
+        
         return results
 
     def run_cli(self):
